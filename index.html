@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+    <meta charset="utf-8"/>
+</head>
+<body>
+    <div style="position:absolute; left:0px; top:0px; width:512px; height:512px">
+        <canvas id="canvas-element-id" style="border: none;" width="800" height="800"></canvas>
+    </div>
+
+    <script src = "src/webgl-blur.js"></script>
+    <script>
+        var canvas = document.getElementById("canvas-element-id")
+        var gl = mfGetWebGLContext(canvas)
+        var program = mfCreateProgram(gl, vshader, fshader)
+        gl.clearColor(0.0, 0.0, 0.0, 1.0)
+
+        var mesh = mfCreatePlane()
+        var properties = {
+            "uniforms": [
+                "u_Sampler",
+                "u_Dir",
+                "u_GaussMatrix",
+                "u_Resolution",
+            ],
+
+            "attribs": [
+                "a_Position",
+                "a_TexCoord",
+            ],
+        }
+        mfInitProgram(gl, program, properties)
+        program.vertexBuffer = mfInitBufferForLaterUse(gl, gl.ARRAY_BUFFER, mesh.vertices)
+        program.textureCoordBuffer = mfInitBufferForLaterUse(gl, gl.ARRAY_BUFFER, mesh.textureCoords)
+        program.indexBuffer  = mfInitBufferForLaterUse(gl, gl.ELEMENT_ARRAY_BUFFER, mesh.indices)
+        mfInitFrameBufferForLaterUse(gl, program, "frameBufferX", "outputTextureX", 512, 512)
+        // mfInitFrameBufferForLaterUse(gl, program, "frameBufferY", "blurTexture", 1024, 1024)
+
+        var img = new Image()
+        img.src = "image.jpg"
+        img.onload = function() {
+            var radius = 5.0
+            var gauss = mfGaussMatrix(radius, radius / 2.7)
+            var texture = initTextureForLaterUse(gl, img)
+            // gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
+
+            mfDrawToTexture2D(gl, program.frameBufferX, program.outputTextureX, 512, function (){
+                gl.useProgram(program)
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, program.vertexBuffer)
+                gl.vertexAttribPointer(program.a_Position, 3, gl.FLOAT, false, 0, 0)
+                gl.enableVertexAttribArray(program.a_Position)
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, program.textureCoordBuffer)
+                gl.vertexAttribPointer(program.a_TexCoord, 2, gl.FLOAT, false, 0, 0)
+                gl.enableVertexAttribArray(program.a_TexCoord)
+
+                gl.uniform1fv(program.u_GaussMatrix, gauss)
+                gl.uniform2fv(program.u_Resolution, [1024.0, 1024.0])
+
+                gl.uniform1i(program.u_Sampler, 0)
+                gl.activeTexture(gl.TEXTURE0)
+                gl.bindTexture(gl.TEXTURE_2D, texture)
+
+                gl.uniform2fv(program.u_Dir, [1.0, 0.0])
+
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, program.indexBuffer)
+                gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
+            })
+            
+            gl.viewport(0, 0, 512, 512)
+            gl.bindTexture(gl.TEXTURE_2D, null)
+            gl.bindTexture(gl.TEXTURE_2D, program.outputTextureX)
+            gl.uniform2fv(program.u_Dir, [0.0, 1.0])
+            gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
+        }
+    </script>
+</body>
+</html>
