@@ -6,7 +6,7 @@
 </head>
 <body>
     <div style="position:absolute; left:0px; top:0px; width:512px; height:512px">
-        <canvas id="canvas-element-id" style="border: none;" width="800" height="800"></canvas>
+        <canvas id="canvas-element-id" style="border: none;" width="512" height="512"></canvas>
     </div>
 
     <script type="shader/vertex" id="gauss-blur-vertex">
@@ -22,61 +22,35 @@
 
     <script type="shader/fragment" id="gauss-blur-fragment">
         precision mediump float;
-        #define MAX_RADIUS 100
-        #define RADIUS 3
+        #define RADIUS 15
         uniform sampler2D u_Sampler;
         uniform vec2 u_Dir;
-        uniform int u_Radius;
         uniform vec2 u_Resolution;
-        uniform float u_GaussMatrix[2 * MAX_RADIUS + 1];
+        uniform float u_GaussMatrix[2 * RADIUS + 1];
         varying vec2 v_TexCoord;
         void main() {
             vec3 sum;
-            for (int i = 1; i < MAX_RADIUS; i++) {
-                if (i > u_Radius) {
-                    break;
-                }
-
+            for (int i = -RADIUS; i <= RADIUS; i++) {
                 vec2 offset = float(i) * u_Dir / u_Resolution;
-                vec2 tc1 = v_TexCoord + offset;
-                vec2 tc2 = v_TexCoord - offset;
-                sum += texture2D(u_Sampler, tc1).rgb * u_GaussMatrix[MAX_RADIUS + i];
-                sum += texture2D(u_Sampler, tc2).rgb * u_GaussMatrix[MAX_RADIUS - i];
+                vec2 tc = v_TexCoord + offset;
+                sum += texture2D(u_Sampler, tc).rgb * u_GaussMatrix[i + RADIUS];
             }
-            sum += texture2D(u_Sampler, v_TexCoord).rgb * u_GaussMatrix[MAX_RADIUS];
-
             gl_FragColor = vec4(sum, texture2D(u_Sampler, v_TexCoord).a);
         }
     </script>
-
-
-
-    <script src = "lib/dat.gui.min.js"></script>
+    <script src = "lib/mf-webgl-utils.js"></script>
     <script src = "webgl-blur.js"></script>
     <script>
-        var radius = 3
-        var sigma = 1.5
-        var gui = new dat.GUI()
-        var blurConfig = {
-            radius: radius,
-            sigma: sigma,
-        }
-        gui.add(blurConfig, 'radius', 1, 100, 1).onChange(function(value) {
-            radius = value
-        })
-        gui.add(blurConfig, 'sigma', 1.0, 20.0).onChange(function(value) {
-            sigma = value
-        })
-
+        var radius = 15
+        var sigma = radius / 2.57
         var canvas = document.getElementById("canvas-element-id")
         var gl = mfGetWebGLContext(canvas)
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
         gl.clearColor(0.0, 0.0, 0.0, 1.0)
-        
+
         var vshader = document.getElementById('gauss-blur-vertex').textContent
         var fshader = document.getElementById('gauss-blur-fragment').textContent
         var program = mfCreateProgram(gl, vshader, fshader)
-
         var mesh = mfCreatePlane()
         var properties = {
             "uniforms": [
@@ -92,7 +66,6 @@
                 "a_TexCoord",
             ],
         }
-
 
         mfInitProgram(gl, program, properties)
         program.vertexBuffer = mfInitBufferForLaterUse(gl, gl.ARRAY_BUFFER, mesh.vertices)
@@ -139,7 +112,7 @@
                 gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
                 gl.bindTexture(gl.TEXTURE_2D, null)
             })
-            
+
             gl.bindTexture(gl.TEXTURE_2D, program.outputTextureX)
             gl.uniform2fv(program.u_Dir, [0.0, 1.0])
             gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
