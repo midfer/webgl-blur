@@ -9,12 +9,73 @@
         <canvas id="canvas-element-id" style="border: none;" width="800" height="800"></canvas>
     </div>
 
-    <script src = "src/webgl-blur.js"></script>
+    <script type="shader/vertex" id="gauss-blur-vertex">
+        attribute vec4 a_Position;
+        attribute vec2 a_TexCoord;
+        varying vec2 v_TexCoord;
+
+        void main() {
+            gl_Position = a_Position;
+            v_TexCoord = a_TexCoord;
+        }
+    </script>
+
+    <script type="shader/fragment" id="gauss-blur-fragment">
+        precision mediump float;
+        #define MAX_RADIUS 100
+        #define RADIUS 3
+        uniform sampler2D u_Sampler;
+        uniform vec2 u_Dir;
+        uniform int u_Radius;
+        uniform vec2 u_Resolution;
+        uniform float u_GaussMatrix[2 * MAX_RADIUS + 1];
+        varying vec2 v_TexCoord;
+        void main() {
+            vec3 sum;
+            for (int i = 1; i < MAX_RADIUS; i++) {
+                if (i > u_Radius) {
+                    break;
+                }
+
+                vec2 offset = float(i) * u_Dir / u_Resolution;
+                vec2 tc1 = v_TexCoord + offset;
+                vec2 tc2 = v_TexCoord - offset;
+                sum += texture2D(u_Sampler, tc1).rgb * u_GaussMatrix[MAX_RADIUS + i];
+                sum += texture2D(u_Sampler, tc2).rgb * u_GaussMatrix[MAX_RADIUS - i];
+            }
+            sum += texture2D(u_Sampler, v_TexCoord).rgb * u_GaussMatrix[MAX_RADIUS];
+
+            gl_FragColor = vec4(sum, texture2D(u_Sampler, v_TexCoord).a);
+        }
+    </script>
+
+
+
+    <script src = "lib/dat.gui.min.js"></script>
+    <script src = "webgl-blur.js"></script>
     <script>
+        var radius = 3
+        var sigma = 1.5
+        var gui = new dat.GUI()
+        var blurConfig = {
+            radius: radius,
+            sigma: sigma,
+        }
+        gui.add(blurConfig, 'radius', 1, 100, 1).onChange(function(value) {
+            radius = value
+        })
+        gui.add(blurConfig, 'sigma', 1.0, 20.0).onChange(function(value) {
+            sigma = value
+        })
+
         var canvas = document.getElementById("canvas-element-id")
         var gl = mfGetWebGLContext(canvas)
-        var program = mfCreateProgram(gl, vshader, fshader)
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
         gl.clearColor(0.0, 0.0, 0.0, 1.0)
+        
+        var vshader = document.getElementById('gauss-blur-vertex').textContent
+        var fshader = document.getElementById('gauss-blur-fragment').textContent
+        var program = mfCreateProgram(gl, vshader, fshader)
 
         var mesh = mfCreatePlane()
         var properties = {
@@ -23,6 +84,7 @@
                 "u_Dir",
                 "u_GaussMatrix",
                 "u_Resolution",
+                "u_Radius",
             ],
 
             "attribs": [
@@ -30,22 +92,29 @@
                 "a_TexCoord",
             ],
         }
+
+
         mfInitProgram(gl, program, properties)
         program.vertexBuffer = mfInitBufferForLaterUse(gl, gl.ARRAY_BUFFER, mesh.vertices)
         program.textureCoordBuffer = mfInitBufferForLaterUse(gl, gl.ARRAY_BUFFER, mesh.textureCoords)
         program.indexBuffer  = mfInitBufferForLaterUse(gl, gl.ELEMENT_ARRAY_BUFFER, mesh.indices)
-        mfInitFrameBufferForLaterUse(gl, program, "frameBufferX", "outputTextureX", 512, 512)
-        // mfInitFrameBufferForLaterUse(gl, program, "frameBufferY", "blurTexture", 1024, 1024)
+
+        var bufferWidth = 1024
+        var bufferHeight = 1024
+        mfInitFrameBufferForLaterUse(gl, program, "frameBufferX", "outputTextureX", bufferWidth, bufferHeight)
 
         var img = new Image()
         img.src = "image.jpg"
         img.onload = function() {
-            var radius = 5.0
-            var gauss = mfGaussMatrix(radius, radius / 2.7)
-            var texture = initTextureForLaterUse(gl, img)
-            // gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
+            program.texture = initTextureForLaterUse(gl, img)
+            requestAnimationFrame(function() {
+                update(gl, program, mesh)
+            })
+        }
 
-            mfDrawToTexture2D(gl, program.frameBufferX, program.outputTextureX, 512, function (){
+        function update(gl, program, mesh) {
+            gl.clear(gl.COLOR_BUFFER_BIT)
+            mfDrawToTexture2D(gl, program.frameBufferX, program.outputTextureX, bufferWidth, bufferHeight, function (){
                 gl.useProgram(program)
 
                 gl.bindBuffer(gl.ARRAY_BUFFER, program.vertexBuffer)
@@ -56,24 +125,28 @@
                 gl.vertexAttribPointer(program.a_TexCoord, 2, gl.FLOAT, false, 0, 0)
                 gl.enableVertexAttribArray(program.a_TexCoord)
 
-                gl.uniform1fv(program.u_GaussMatrix, gauss)
-                gl.uniform2fv(program.u_Resolution, [1024.0, 1024.0])
+                gl.uniform1fv(program.u_GaussMatrix, mfGaussMatrix(radius, sigma))
+                gl.uniform2fv(program.u_Resolution, [bufferWidth, bufferHeight])
 
                 gl.uniform1i(program.u_Sampler, 0)
                 gl.activeTexture(gl.TEXTURE0)
-                gl.bindTexture(gl.TEXTURE_2D, texture)
+                gl.bindTexture(gl.TEXTURE_2D, program.texture)
 
                 gl.uniform2fv(program.u_Dir, [1.0, 0.0])
+                gl.uniform1i(program.u_Radius, radius)
 
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, program.indexBuffer)
                 gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
+                gl.bindTexture(gl.TEXTURE_2D, null)
             })
             
-            gl.viewport(0, 0, 512, 512)
-            gl.bindTexture(gl.TEXTURE_2D, null)
             gl.bindTexture(gl.TEXTURE_2D, program.outputTextureX)
             gl.uniform2fv(program.u_Dir, [0.0, 1.0])
             gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
+
+            requestAnimationFrame(function() {
+                update(gl, program, mesh)
+            })
         }
     </script>
 </body>

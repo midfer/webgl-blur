@@ -1,33 +1,3 @@
-var vshader = 
-"attribute vec4 a_Position;\n" +
-"attribute vec2 a_TexCoord;\n" +
-"varying vec2 v_TexCoord;\n" +
-"void main() {\n" +
-"    gl_Position = a_Position;\n" +
-"    v_TexCoord = a_TexCoord;\n" +
-"}\n"
-
-var fshader = 
-"precision mediump float;\n" +
-
-"#define RADIUS 5\n" +
-"uniform sampler2D u_Sampler;\n" +
-"uniform vec2 u_Dir;\n" +
-"uniform vec2 u_Resolution;\n" +
-"uniform float u_GaussMatrix[2 * RADIUS + 1];\n" +
-"varying vec2 v_TexCoord;\n" +
-
-"void main() {\n" +
-"    vec3 sum;\n" +
-"    for (int i = -RADIUS; i <= RADIUS; i++) {\n" +
-"        vec2 offset = float(i) * u_Dir / u_Resolution;\n" +
-"        vec2 tc = v_TexCoord + offset;\n" +
-"        sum += texture2D(u_Sampler, tc).rgb * u_GaussMatrix[i + RADIUS];\n" +
-"    }\n" +
-"    gl_FragColor = vec4(sum, texture2D(u_Sampler, v_TexCoord).a);\n" +
-"    gl_FragColor = texture2D(u_Sampler, v_TexCoord);\n" +
-"}\n"
-
 function mfCreatePlane() {
     var mesh = {}
     mesh.vertices = new Float32Array([
@@ -178,9 +148,9 @@ function mfInitFrameBufferForLaterUse(gl, program, frameBufferName, textureBuffe
     gl.bindTexture(gl.TEXTURE_2D, null)
 }
 
-function mfDrawToTexture2D(gl, frameBuffer, textureBuffer, size, drawFunc) {
+function mfDrawToTexture2D(gl, frameBuffer, textureBuffer, bufferWidth, bufferHeight, drawFunc) {
     var orign = gl.getParameter(gl.VIEWPORT)
-    gl.viewport(orign[0], orign[1], size, size)
+    gl.viewport(orign[0], orign[1], bufferWidth, bufferHeight)
     gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer)
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, textureBuffer, 0)
     if(gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE) {
